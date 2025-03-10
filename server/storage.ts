@@ -6,6 +6,8 @@ import {
   userArticleInteractions, type UserArticleInteraction, type InsertUserArticleInteraction,
   type ArticleWithSentiment, type Stats
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and, gt, inArray, sql } from "drizzle-orm";
 
 // Storage interface with CRUD methods
 export interface IStorage {

@@ -13,6 +13,13 @@ import session from "express-session";
 import MemoryStore from "memorystore";
 import { z } from "zod";
 
+// Declare session interface for TypeScript
+declare module 'express-session' {
+  interface SessionData {
+    userId?: number;
+  }
+}
+
 // Helper function to validate request body
 function validateRequest<T>(schema: z.ZodType<T>) {
   return (req: Request, res: Response, next: () => void) => {
