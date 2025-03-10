@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
@@ -7,6 +7,7 @@ import {
   insertUserPreferencesSchema,
   insertUserArticleInteractionSchema
 } from "@shared/schema";
+import { newsService } from "./services/newsService";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import MemoryStore from "memorystore";
@@ -318,6 +319,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to get stats" });
     }
   });
+  
+  // News API integration routes
+  app.get("/api/news/refresh", async (req, res) => {
+    try {
+      // Check if this is an admin request or restrict as needed
+      const apiKey = req.query.key;
+      if (apiKey !== process.env.ADMIN_API_KEY && process.env.NODE_ENV === 'production') {
+        return res.status(403).json({ message: "Unauthorized access" });
+      }
+      
+      // Define how many articles per category to fetch (default 5)
+      const articlesPerCategory = req.query.count ? parseInt(req.query.count as string, 10) : 5;
+      
+      // Start the news update process (can be done asynchronously)
+      newsService.fetchAndUpdateAllNews(articlesPerCategory)
+        .catch(error => console.error("Background news update failed:", error));
+      
+      res.status(200).json({ message: "News update initiated. Check logs for progress." });
+    } catch (error) {
+      console.error("News refresh error:", error);
+      res.status(500).json({ message: "Failed to refresh news" });
+    }
+  });
+  
+  // Category-specific news refresh
+  app.get("/api/news/refresh/:category", async (req, res) => {
+    try {
+      const { category } = req.params;
+      
+      // Check if this is an admin request or restrict as needed
+      const apiKey = req.query.key;
+      if (apiKey !== process.env.ADMIN_API_KEY && process.env.NODE_ENV === 'production') {
+        return res.status(403).json({ message: "Unauthorized access" });
+      }
+      
+      // Define how many articles to fetch (default 10)
+      const articleCount = req.query.count ? parseInt(req.query.count as string, 10) : 10;
+      
+      // Fetch news for specific category
+      const newsResponse = await newsService.fetchTopHeadlinesByCategory(category, articleCount);
+      await newsService.processAndSaveArticles(newsResponse, category);
+      
+      res.status(200).json({ message: `News refreshed for category: ${category}` });
+    } catch (error) {
+      console.error(`News refresh error for category ${req.params.category}:`, error);
+      res.status(500).json({ message: "Failed to refresh category news" });
+    }
+  });
+  
+  // Initialize newsService and add some articles on startup
+  setTimeout(() => {
+    console.log("Initializing news feed with latest articles...");
+    newsService.fetchAndUpdateAllNews(3) // Fetch 3 articles for each category
+      .then(() => console.log("Initial news feed populated successfully"))
+      .catch(error => console.error("Failed to populate initial news feed:", error));
+  }, 5000); // Wait 5 seconds after server starts to fetch news
   
   return httpServer;
 }

@@ -386,4 +386,364 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Database storage implementation
+export class DatabaseStorage implements IStorage {
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+  
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+  
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+  
+  async createUser(user: InsertUser): Promise<User> {
+    const [createdUser] = await db.insert(users).values(user).returning();
+    return createdUser;
+  }
+  
+  async getUserPreferences(userId: number): Promise<UserPreferences | undefined> {
+    const [preferences] = await db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId));
+    return preferences;
+  }
+  
+  async createUserPreferences(preferences: InsertUserPreferences): Promise<UserPreferences> {
+    const [createdPreferences] = await db
+      .insert(userPreferences)
+      .values(preferences)
+      .returning();
+    return createdPreferences;
+  }
+  
+  async updateUserPreferences(userId: number, preferences: Partial<InsertUserPreferences>): Promise<UserPreferences | undefined> {
+    const [updatedPreferences] = await db
+      .update(userPreferences)
+      .set(preferences)
+      .where(eq(userPreferences.userId, userId))
+      .returning();
+    return updatedPreferences;
+  }
+  
+  async getArticle(id: number): Promise<Article | undefined> {
+    const [article] = await db.select().from(articles).where(eq(articles.id, id));
+    return article;
+  }
+  
+  async getArticles(limit = 10, offset = 0): Promise<Article[]> {
+    return await db
+      .select()
+      .from(articles)
+      .orderBy(desc(articles.publishedAt))
+      .limit(limit)
+      .offset(offset);
+  }
+  
+  async getArticlesByTopic(topic: string, limit = 10, offset = 0): Promise<Article[]> {
+    return await db
+      .select()
+      .from(articles)
+      .where(eq(articles.topic, topic))
+      .orderBy(desc(articles.publishedAt))
+      .limit(limit)
+      .offset(offset);
+  }
+  
+  async createArticle(article: InsertArticle): Promise<Article> {
+    // Set defaults if not provided
+    const articleToInsert = {
+      ...article,
+      summary: article.summary ?? null,
+      imageUrl: article.imageUrl ?? null
+    };
+    
+    const [createdArticle] = await db
+      .insert(articles)
+      .values(articleToInsert)
+      .returning();
+    return createdArticle;
+  }
+  
+  async updateArticle(id: number, article: Partial<InsertArticle>): Promise<Article | undefined> {
+    const [updatedArticle] = await db
+      .update(articles)
+      .set(article)
+      .where(eq(articles.id, id))
+      .returning();
+    return updatedArticle;
+  }
+  
+  async getArticleSentiment(articleId: number): Promise<ArticleSentiment | undefined> {
+    const [sentiment] = await db
+      .select()
+      .from(articleSentiments)
+      .where(eq(articleSentiments.articleId, articleId));
+    return sentiment;
+  }
+  
+  async createArticleSentiment(sentiment: InsertArticleSentiment): Promise<ArticleSentiment> {
+    // Set defaults if not provided
+    const sentimentToInsert = {
+      ...sentiment,
+      explanation: sentiment.explanation ?? null,
+      score: sentiment.score ?? null
+    };
+    
+    const [createdSentiment] = await db
+      .insert(articleSentiments)
+      .values(sentimentToInsert)
+      .returning();
+    return createdSentiment;
+  }
+  
+  async getUserArticleInteraction(userId: number, articleId: number): Promise<UserArticleInteraction | undefined> {
+    const [interaction] = await db
+      .select()
+      .from(userArticleInteractions)
+      .where(
+        and(
+          eq(userArticleInteractions.userId, userId),
+          eq(userArticleInteractions.articleId, articleId)
+        )
+      );
+    return interaction;
+  }
+  
+  async createUserArticleInteraction(interaction: InsertUserArticleInteraction): Promise<UserArticleInteraction> {
+    // Set defaults if not provided
+    const interactionToInsert = {
+      ...interaction,
+      isSaved: interaction.isSaved ?? false,
+      isRead: interaction.isRead ?? false
+    };
+    
+    const [createdInteraction] = await db
+      .insert(userArticleInteractions)
+      .values(interactionToInsert)
+      .returning();
+    return createdInteraction;
+  }
+  
+  async updateUserArticleInteraction(userId: number, articleId: number, interaction: Partial<InsertUserArticleInteraction>): Promise<UserArticleInteraction | undefined> {
+    const [result] = await db
+      .update(userArticleInteractions)
+      .set(interaction)
+      .where(
+        and(
+          eq(userArticleInteractions.userId, userId),
+          eq(userArticleInteractions.articleId, articleId)
+        )
+      )
+      .returning();
+    return result;
+  }
+  
+  async getSavedArticles(userId: number, limit = 10, offset = 0): Promise<Article[]> {
+    const savedInteractions = await db
+      .select()
+      .from(userArticleInteractions)
+      .where(
+        and(
+          eq(userArticleInteractions.userId, userId),
+          eq(userArticleInteractions.isSaved, true)
+        )
+      );
+    
+    const articleIds = savedInteractions.map(interaction => interaction.articleId);
+    
+    if (articleIds.length === 0) {
+      return [];
+    }
+    
+    return await db
+      .select()
+      .from(articles)
+      .where(inArray(articles.id, articleIds))
+      .orderBy(desc(articles.publishedAt))
+      .limit(limit)
+      .offset(offset);
+  }
+  
+  async getArticlesWithSentiment(userId?: number, limit = 10, offset = 0): Promise<ArticleWithSentiment[]> {
+    // Get articles
+    const articlesResult = await this.getArticles(limit, offset);
+    
+    // Return early if no articles
+    if (articlesResult.length === 0) {
+      return [];
+    }
+    
+    // Prepare the result
+    const result: ArticleWithSentiment[] = [];
+    
+    // Process each article
+    for (const article of articlesResult) {
+      const sentiment = await this.getArticleSentiment(article.id);
+      let interaction;
+      
+      if (userId) {
+        interaction = await this.getUserArticleInteraction(userId, article.id);
+      }
+      
+      result.push({
+        ...article,
+        sentiment,
+        interaction
+      });
+    }
+    
+    return result;
+  }
+  
+  async getArticlesWithSentimentByTopic(topic: string, userId?: number, limit = 10, offset = 0): Promise<ArticleWithSentiment[]> {
+    // Get articles by topic
+    const articlesResult = await this.getArticlesByTopic(topic, limit, offset);
+    
+    // Return early if no articles
+    if (articlesResult.length === 0) {
+      return [];
+    }
+    
+    // Prepare the result
+    const result: ArticleWithSentiment[] = [];
+    
+    // Process each article
+    for (const article of articlesResult) {
+      const sentiment = await this.getArticleSentiment(article.id);
+      let interaction;
+      
+      if (userId) {
+        interaction = await this.getUserArticleInteraction(userId, article.id);
+      }
+      
+      result.push({
+        ...article,
+        sentiment,
+        interaction
+      });
+    }
+    
+    return result;
+  }
+  
+  async getArticlesWithSentimentBySentiment(sentimentType: string, userId?: number, limit = 10, offset = 0): Promise<ArticleWithSentiment[]> {
+    // Get all article sentiments matching the sentiment type
+    const sentimentsResult = await db
+      .select()
+      .from(articleSentiments)
+      .where(eq(articleSentiments.sentiment, sentimentType));
+    
+    // Return early if no matching sentiments
+    if (sentimentsResult.length === 0) {
+      return [];
+    }
+    
+    // Get the article IDs
+    const articleIds = sentimentsResult.map(sentiment => sentiment.articleId);
+    
+    // Get the articles
+    const articlesResult = await db
+      .select()
+      .from(articles)
+      .where(inArray(articles.id, articleIds))
+      .orderBy(desc(articles.publishedAt))
+      .limit(limit)
+      .offset(offset);
+    
+    // Prepare the result
+    const result: ArticleWithSentiment[] = [];
+    
+    // Process each article
+    for (const article of articlesResult) {
+      // Find the sentiment
+      const sentiment = sentimentsResult.find(s => s.articleId === article.id);
+      let interaction;
+      
+      if (userId) {
+        interaction = await this.getUserArticleInteraction(userId, article.id);
+      }
+      
+      result.push({
+        ...article,
+        sentiment,
+        interaction
+      });
+    }
+    
+    return result;
+  }
+  
+  async getSavedArticlesWithSentiment(userId: number, limit = 10, offset = 0): Promise<ArticleWithSentiment[]> {
+    // Get saved articles
+    const savedArticles = await this.getSavedArticles(userId, limit, offset);
+    
+    // Return early if no saved articles
+    if (savedArticles.length === 0) {
+      return [];
+    }
+    
+    // Prepare the result
+    const result: ArticleWithSentiment[] = [];
+    
+    // Process each article
+    for (const article of savedArticles) {
+      const sentiment = await this.getArticleSentiment(article.id);
+      const interaction = await this.getUserArticleInteraction(userId, article.id);
+      
+      result.push({
+        ...article,
+        sentiment,
+        interaction
+      });
+    }
+    
+    return result;
+  }
+  
+  async getUserStats(userId: number): Promise<Stats> {
+    // Get today's date at the start of the day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Count articles fetched today
+    const todayArticlesCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(articles)
+      .where(gt(articles.fetchedAt, today));
+    
+    const articlesToday = todayArticlesCount[0]?.count || 0;
+    
+    // Count positive news articles
+    const positiveNewsCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(articleSentiments)
+      .where(eq(articleSentiments.sentiment, "positive"));
+    
+    const positiveNews = positiveNewsCount[0]?.count || 0;
+    
+    // Count unique active topics
+    const topicsResult = await db
+      .select({ topic: articles.topic })
+      .from(articles)
+      .groupBy(articles.topic);
+    
+    const activeTopics = topicsResult.length;
+    
+    return {
+      articlesToday,
+      positiveNews,
+      activeTopics
+    };
+  }
+}
+
+// Use database storage implementation
+export const storage = new DatabaseStorage();
