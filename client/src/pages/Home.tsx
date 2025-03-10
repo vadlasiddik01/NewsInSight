@@ -56,11 +56,30 @@ const Home = () => {
   // Fetch topics
   const topics = ['Technology', 'Business', 'Science', 'Health', 'Politics'];
 
-  // Sort articles
-  const sortedArticles = React.useMemo(() => {
+  // Filter and sort articles
+  const filteredAndSortedArticles = React.useMemo(() => {
     if (!articles) return [];
     
-    return [...articles].sort((a, b) => {
+    // First filter articles based on active filters
+    let filtered = [...articles];
+    
+    // Filter by topic if topic is selected
+    if (selectedTopic) {
+      filtered = filtered.filter(article => article.topic.toLowerCase() === selectedTopic.toLowerCase());
+    }
+    
+    // Filter by sentiment if sentiment is selected and not 'all'
+    if (selectedSentiment && selectedSentiment !== 'all') {
+      filtered = filtered.filter(article => article.sentiment?.sentiment === selectedSentiment);
+    }
+    
+    // For search results, only show articles that match both the search and current topic/sentiment filters
+    if (searchQuery) {
+      // Keep the filtering we already did for topic and sentiment
+    }
+    
+    // Sort the filtered articles
+    return filtered.sort((a, b) => {
       if (sortBy === 'newest') {
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
       } else if (sortBy === 'sentiment') {
@@ -75,9 +94,17 @@ const Home = () => {
       }
       return 0;
     });
-  }, [articles, sortBy]);
+  }, [articles, sortBy, selectedTopic, selectedSentiment, searchQuery]);
 
-  const totalPages = Math.ceil((articles?.length || 0) / articlesPerPage);
+  // Calculate pagination based on filtered articles
+  const totalFilteredArticles = filteredAndSortedArticles.length;
+  const totalPages = Math.ceil(totalFilteredArticles / articlesPerPage);
+  
+  // Get current page articles
+  const currentArticles = filteredAndSortedArticles.slice(
+    (currentPage - 1) * articlesPerPage,
+    currentPage * articlesPerPage
+  );
 
   const handleTopicChange = (topic: string) => {
     setSelectedTopic(topic === selectedTopic ? '' : topic);
@@ -168,6 +195,16 @@ const Home = () => {
             onSentimentChange={handleSentimentChange} 
           />
           
+          {/* Results count */}
+          {!articlesLoading && filteredAndSortedArticles.length > 0 && (
+            <div className={styles.resultsCount}>
+              Showing {Math.min(articlesPerPage, currentArticles.length)} of {totalFilteredArticles} articles
+              {searchQuery ? ` matching "${searchQuery}"` : ""}
+              {selectedTopic ? ` in ${selectedTopic}` : ""}
+              {selectedSentiment && selectedSentiment !== 'all' ? ` with ${selectedSentiment} sentiment` : ""}
+            </div>
+          )}
+          
           {/* News article grid */}
           <div className={styles.articlesGrid}>
             {articlesLoading ? (
@@ -182,8 +219,8 @@ const Home = () => {
                   </div>
                 </div>
               ))
-            ) : sortedArticles.length > 0 ? (
-              sortedArticles.map(article => (
+            ) : currentArticles.length > 0 ? (
+              currentArticles.map(article => (
                 <ArticleCard key={article.id} article={article} />
               ))
             ) : (
@@ -194,7 +231,7 @@ const Home = () => {
           </div>
           
           {/* Pagination controls */}
-          {!articlesLoading && articles && articles.length > 0 && (
+          {!articlesLoading && filteredAndSortedArticles.length > 0 && (
             <div className={styles.pagination}>
               <button 
                 className={styles.paginationButton} 
