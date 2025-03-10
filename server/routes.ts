@@ -233,6 +233,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Filter articles that match the search term in title or content
         const searchTerms = search.toString().toLowerCase().split(' ');
         
+        // Create a Map to track unique articles by title
+        const uniqueArticlesMap = new Map();
+        
         const matchedArticles = allArticles.filter(article => {
           const titleMatches = searchTerms.some(term => 
             article.title.toLowerCase().includes(term)
@@ -242,7 +245,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             article.content.toLowerCase().includes(term)
           );
           
-          return titleMatches || contentMatches;
+          // Check if the article matches search terms
+          const matches = titleMatches || contentMatches;
+          
+          // Only include if it matches and isn't already in our uniqueArticlesMap
+          if (matches) {
+            // Use normalized title as a key to avoid duplicates
+            const normalizedTitle = article.title.toLowerCase().trim();
+            
+            if (!uniqueArticlesMap.has(normalizedTitle)) {
+              uniqueArticlesMap.set(normalizedTitle, article);
+              return true;
+            }
+            return false;
+          }
+          return false;
         });
         
         // Get sentiment data for matched articles

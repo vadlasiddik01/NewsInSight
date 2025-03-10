@@ -10,7 +10,6 @@ import MobileNavigation from '../components/MobileNavigation';
 import { useAuth } from '../lib/auth';
 import styles from '../styles/Home.module.css';
 import { ArticleWithSentiment, Stats } from '@shared/schema';
-import { Search } from 'lucide-react';
 
 const Home = () => {
   const { isAuthenticated, user } = useAuth();
@@ -98,57 +97,24 @@ const Home = () => {
     setCurrentPage(page);
   };
   
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // No longer need these functions since search is handled in Header
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setIsSearching(!!query);
     setCurrentPage(1);
     refetch();
   };
 
-  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-  };
-
-  const clearSearch = () => {
-    setSearchQuery('');
-    setIsSearching(false);
-    setCurrentPage(1);
-  };
-
   return (
     <div className={styles.container}>
-      <Header />
+      <Header onSearch={handleSearch} />
       
       <main className={styles.main}>
         <div className={styles.dashboardContainer}>
           {/* Dashboard header with stats */}
           <div className={styles.dashboardHeader}>
             <h2 className={styles.dashboardTitle}>Your News Digest</h2>
-            
-            {/* Search Bar */}
-            <form className={styles.searchContainer} onSubmit={handleSearchSubmit}>
-              <div className={styles.searchInputWrapper}>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={handleSearchInputChange}
-                  placeholder="Search for news topics..."
-                  className={styles.searchInput}
-                />
-                {searchQuery && (
-                  <button 
-                    type="button" 
-                    className={styles.clearSearchButton} 
-                    onClick={clearSearch}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              <button type="submit" className={styles.searchButton}>
-                <Search size={20} />
-                <span>Search</span>
-              </button>
-            </form>
             
             {/* Stats Cards */}
             <div className={styles.statsGrid}>

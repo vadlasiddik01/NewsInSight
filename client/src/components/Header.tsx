@@ -3,17 +3,32 @@ import { Link, useLocation } from 'wouter';
 import { useAuth } from '../lib/auth';
 import UserMenu from './UserMenu';
 import styles from '../styles/Header.module.css';
+import { useQueryClient } from '@tanstack/react-query';
 
-const Header = () => {
+interface HeaderProps {
+  onSearch?: (query: string) => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onSearch }) => {
   const [location] = useLocation();
   const { isAuthenticated } = useAuth();
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const queryClient = useQueryClient();
   
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle search - could be implemented to filter articles
-    console.log('Search for:', searchQuery);
+    if (onSearch && searchQuery.trim()) {
+      onSearch(searchQuery);
+    }
+    // Keep search visible after submit
+  };
+  
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    if (onSearch) {
+      onSearch('');
+    }
     setIsSearchActive(false);
   };
   
@@ -78,21 +93,33 @@ const Header = () => {
       {isSearchActive && (
         <div className={styles.searchBar}>
           <form onSubmit={handleSearch} className={styles.searchForm}>
-            <input
-              type="text"
-              placeholder="Search articles..."
-              className={styles.searchInput}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
+            <div className={styles.searchInputWrapper}>
+              <input
+                type="text"
+                placeholder="Search articles..."
+                className={styles.searchInput}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {searchQuery && (
+                <button 
+                  type="button" 
+                  className={styles.clearSearchButton}
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <button type="submit" className={styles.searchSubmit}>
               Search
             </button>
             <button 
               type="button" 
               className={styles.searchCancel}
-              onClick={() => setIsSearchActive(false)}
+              onClick={handleClearSearch}
             >
               Cancel
             </button>

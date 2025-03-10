@@ -150,9 +150,15 @@
   gap: 0.5rem;
 }
 
-.searchInput {
+.searchInputWrapper {
+  position: relative;
   flex-grow: 1;
+}
+
+.searchInput {
+  width: 100%;
   padding: 0.5rem 0.75rem;
+  padding-right: 2.5rem;
   border: 1px solid #d1d5db;
   border-radius: 0.25rem;
   font-size: 0.875rem;
@@ -162,6 +168,26 @@
   outline: none;
   border-color: #5c6bc0;
   box-shadow: 0 0 0 2px rgba(92, 107, 192, 0.2);
+}
+
+.clearSearchButton {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  border-radius: 50%;
+}
+
+.clearSearchButton:hover {
+  color: #6b7280;
+  background-color: #f3f4f6;
 }
 
 .searchSubmit {
