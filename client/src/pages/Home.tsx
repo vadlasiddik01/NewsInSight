@@ -10,6 +10,7 @@ import MobileNavigation from '../components/MobileNavigation';
 import { useAuth } from '../lib/auth';
 import styles from '../styles/Home.module.css';
 import { ArticleWithSentiment, Stats } from '@shared/schema';
+import { Search } from 'lucide-react';
 
 const Home = () => {
   const { isAuthenticated, user } = useAuth();
@@ -17,17 +18,22 @@ const Home = () => {
   const [selectedSentiment, setSelectedSentiment] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('newest');
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isSearching, setIsSearching] = useState<boolean>(false);
   const articlesPerPage = 9;
 
   // Fetch articles with filters
-  const { data: articles, isLoading: articlesLoading } = useQuery<ArticleWithSentiment[]>({
-    queryKey: ['/api/articles', selectedTopic, selectedSentiment, currentPage],
+  const { data: articles, isLoading: articlesLoading, refetch } = useQuery<ArticleWithSentiment[]>({
+    queryKey: ['/api/articles', selectedTopic, selectedSentiment, searchQuery, currentPage],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedTopic) params.append('topic', selectedTopic);
       if (selectedSentiment) params.append('sentiment', selectedSentiment);
+      if (searchQuery) params.append('search', searchQuery);
       params.append('limit', articlesPerPage.toString());
       params.append('offset', ((currentPage - 1) * articlesPerPage).toString());
+      
+      setIsSearching(!!searchQuery);
       
       const response = await fetch(`/api/articles?${params.toString()}`, {
         credentials: 'include'
@@ -91,6 +97,22 @@ const Home = () => {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
+  
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCurrentPage(1);
+    refetch();
+  };
+
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setIsSearching(false);
+    setCurrentPage(1);
+  };
 
   return (
     <div className={styles.container}>
@@ -101,6 +123,32 @@ const Home = () => {
           {/* Dashboard header with stats */}
           <div className={styles.dashboardHeader}>
             <h2 className={styles.dashboardTitle}>Your News Digest</h2>
+            
+            {/* Search Bar */}
+            <form className={styles.searchContainer} onSubmit={handleSearchSubmit}>
+              <div className={styles.searchInputWrapper}>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={handleSearchInputChange}
+                  placeholder="Search for news topics..."
+                  className={styles.searchInput}
+                />
+                {searchQuery && (
+                  <button 
+                    type="button" 
+                    className={styles.clearSearchButton} 
+                    onClick={clearSearch}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button type="submit" className={styles.searchButton}>
+                <Search size={20} />
+                <span>Search</span>
+              </button>
+            </form>
             
             {/* Stats Cards */}
             <div className={styles.statsGrid}>

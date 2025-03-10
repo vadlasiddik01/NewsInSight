@@ -204,14 +204,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Articles routes
   app.get("/api/articles", async (req, res) => {
     try {
-      const { topic, sentiment, limit = "10", offset = "0" } = req.query;
+      const { topic, sentiment, search, limit = "10", offset = "0" } = req.query;
       const userId = req.session.userId;
       const limitNum = parseInt(limit as string, 10);
       const offsetNum = parseInt(offset as string, 10);
       
       let articles;
       
-      if (topic && sentiment) {
+      if (search) {
+        // Get articles by search term
+        // First, fetch new articles from NewsAPI based on the search term
+        try {
+          console.log(`User searched for: "${search}"`);
+          
+          // Fetch from NewsAPI if the search term is substantial
+          if (search.toString().length >= 3) {
+            const searchResponse = await newsService.fetchEverything(search.toString(), 5);
+            await newsService.processAndSaveArticles(searchResponse, "search");
+          }
+        } catch (searchError) {
+          console.error("Error fetching search results from API:", searchError);
+          // Continue with local search even if API fails
+        }
+        
+        // Get articles from database that match the search term
+        const allArticles = await storage.getArticles(100, 0); // Get more to filter
+        
+        // Filter articles that match the search term in title or content
+        const searchTerms = search.toString().toLowerCase().split(' ');
+        
+        const matchedArticles = allArticles.filter(article => {
+          const titleMatches = searchTerms.some(term => 
+            article.title.toLowerCase().includes(term)
+          );
+          
+          const contentMatches = searchTerms.some(term => 
+            article.content.toLowerCase().includes(term)
+          );
+          
+          return titleMatches || contentMatches;
+        });
+        
+        // Get sentiment data for matched articles
+        const articlesWithSentiment = await Promise.all(
+          matchedArticles.slice(offsetNum, offsetNum + limitNum).map(async article => {
+            const sentiment = await storage.getArticleSentiment(article.id);
+            const interaction = userId ? await storage.getUserArticleInteraction(userId, article.id) : undefined;
+            return { ...article, sentiment, interaction };
+          })
+        );
+        
+        articles = articlesWithSentiment;
+      } else if (topic && sentiment) {
         // Get articles by topic and sentiment
         const articlesByTopic = await storage.getArticlesWithSentimentByTopic(
           topic as string, 
