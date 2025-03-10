@@ -1,0 +1,66 @@
+.container {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tab {
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+  color: #5c6bc0;
+}
+
+.tab.active {
+  color: #5c6bc0;
+  border-bottom-color: #5c6bc0;
+}
+
+.sentimentIndicator {
+  display: flex;
+  align-items: center;
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  margin-right: 0.5rem;
+}
+
+.positive {
+  background-color: #4caf50;
+}
+
+.neutral {
+  background-color: #607d8b;
+}
+
+.negative {
+  background-color: #f44336;
+}
+
+@media (max-width: 640px) {
+  .tab {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  .dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    margin-right: 0.375rem;
+  }
+}

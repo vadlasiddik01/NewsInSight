@@ -1,0 +1,323 @@
+import type { Express, Request, Response } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { 
+  loginSchema, 
+  insertUserSchema, 
+  insertUserPreferencesSchema,
+  insertUserArticleInteractionSchema
+} from "@shared/schema";
+import bcrypt from "bcryptjs";
+import session from "express-session";
+import MemoryStore from "memorystore";
+import { z } from "zod";
+
+// Helper function to validate request body
+function validateRequest<T>(schema: z.ZodType<T>) {
+  return (req: Request, res: Response, next: () => void) => {
+    try {
+      req.body = schema.parse(req.body);
+      next();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "An unexpected error occurred" });
+      }
+    }
+  };
+}
+
+// Authentication middleware
+const authenticateUser = (req: Request, res: Response, next: () => void) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  next();
+};
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  const httpServer = createServer(app);
+  
+  // Set up session
+  const SessionStore = MemoryStore(session);
+  app.use(session({
+    secret: process.env.SESSION_SECRET || "news-digest-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: process.env.NODE_ENV === "production", maxAge: 24 * 60 * 60 * 1000 },
+    store: new SessionStore({ checkPeriod: 86400000 }),
+  }));
+  
+  // Authentication routes
+  app.post("/api/register", validateRequest(insertUserSchema), async (req, res) => {
+    try {
+      const { username, email, password, fullName } = req.body;
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already taken" });
+      }
+      
+      const existingEmail = await storage.getUserByEmail(email);
+      if (existingEmail) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+      
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      
+      // Create user
+      const user = await storage.createUser({
+        username,
+        email,
+        password: hashedPassword,
+        fullName
+      });
+      
+      // Initialize user preferences
+      await storage.createUserPreferences({
+        userId: user.id,
+        topics: ["Technology", "Business", "Science", "Health", "Politics"],
+        keywords: [],
+        sources: []
+      });
+      
+      // Set session
+      req.session.userId = user.id;
+      
+      // Return user without password
+      const { password: _, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ message: "Failed to register user" });
+    }
+  });
+  
+  app.post("/api/login", validateRequest(loginSchema), async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      
+      // Find user
+      const user = await storage.getUserByUsername(username);
+      if (!user) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      
+      // Verify password
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      
+      // Set session
+      req.session.userId = user.id;
+      
+      // Return user without password
+      const { password: _, ...userWithoutPassword } = user;
+      res.status(200).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Failed to log in" });
+    }
+  });
+  
+  app.post("/api/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Failed to log out" });
+      }
+      res.status(200).json({ message: "Logged out successfully" });
+    });
+  });
+  
+  app.get("/api/me", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Return user without password
+      const { password, ...userWithoutPassword } = user;
+      res.status(200).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Get user error:", error);
+      res.status(500).json({ message: "Failed to get user data" });
+    }
+  });
+  
+  // User preferences routes
+  app.get("/api/preferences", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const preferences = await storage.getUserPreferences(userId);
+      
+      if (!preferences) {
+        return res.status(404).json({ message: "Preferences not found" });
+      }
+      
+      res.status(200).json(preferences);
+    } catch (error) {
+      console.error("Get preferences error:", error);
+      res.status(500).json({ message: "Failed to get preferences" });
+    }
+  });
+  
+  app.put("/api/preferences", authenticateUser, validateRequest(insertUserPreferencesSchema.partial()), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { topics, keywords, sources } = req.body;
+      
+      const updatedPreferences = await storage.updateUserPreferences(userId, {
+        topics,
+        keywords,
+        sources
+      });
+      
+      if (!updatedPreferences) {
+        return res.status(404).json({ message: "Preferences not found" });
+      }
+      
+      res.status(200).json(updatedPreferences);
+    } catch (error) {
+      console.error("Update preferences error:", error);
+      res.status(500).json({ message: "Failed to update preferences" });
+    }
+  });
+  
+  // Articles routes
+  app.get("/api/articles", async (req, res) => {
+    try {
+      const { topic, sentiment, limit = "10", offset = "0" } = req.query;
+      const userId = req.session.userId;
+      const limitNum = parseInt(limit as string, 10);
+      const offsetNum = parseInt(offset as string, 10);
+      
+      let articles;
+      
+      if (topic && sentiment) {
+        // Get articles by topic and sentiment
+        const articlesByTopic = await storage.getArticlesWithSentimentByTopic(
+          topic as string, 
+          userId,
+          100, // Get more to filter by sentiment
+          0
+        );
+        
+        articles = articlesByTopic
+          .filter(article => article.sentiment?.sentiment === sentiment)
+          .slice(offsetNum, offsetNum + limitNum);
+      } else if (topic) {
+        // Get articles by topic
+        articles = await storage.getArticlesWithSentimentByTopic(
+          topic as string, 
+          userId,
+          limitNum, 
+          offsetNum
+        );
+      } else if (sentiment) {
+        // Get articles by sentiment
+        articles = await storage.getArticlesWithSentimentBySentiment(
+          sentiment as string, 
+          userId,
+          limitNum, 
+          offsetNum
+        );
+      } else {
+        // Get all articles
+        articles = await storage.getArticlesWithSentiment(
+          userId,
+          limitNum, 
+          offsetNum
+        );
+      }
+      
+      res.status(200).json(articles);
+    } catch (error) {
+      console.error("Get articles error:", error);
+      res.status(500).json({ message: "Failed to get articles" });
+    }
+  });
+  
+  app.get("/api/articles/saved", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { limit = "10", offset = "0" } = req.query;
+      const limitNum = parseInt(limit as string, 10);
+      const offsetNum = parseInt(offset as string, 10);
+      
+      const savedArticles = await storage.getSavedArticlesWithSentiment(
+        userId,
+        limitNum,
+        offsetNum
+      );
+      
+      res.status(200).json(savedArticles);
+    } catch (error) {
+      console.error("Get saved articles error:", error);
+      res.status(500).json({ message: "Failed to get saved articles" });
+    }
+  });
+  
+  // User article interactions routes
+  app.post("/api/articles/:articleId/interaction", authenticateUser, validateRequest(insertUserArticleInteractionSchema.partial()), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const articleId = parseInt(req.params.articleId, 10);
+      const { isSaved, isRead } = req.body;
+      
+      // Check if article exists
+      const article = await storage.getArticle(articleId);
+      if (!article) {
+        return res.status(404).json({ message: "Article not found" });
+      }
+      
+      // Check if interaction exists
+      const existingInteraction = await storage.getUserArticleInteraction(userId, articleId);
+      
+      let interaction;
+      if (existingInteraction) {
+        // Update existing interaction
+        interaction = await storage.updateUserArticleInteraction(userId, articleId, {
+          isSaved: isSaved !== undefined ? isSaved : existingInteraction.isSaved,
+          isRead: isRead !== undefined ? isRead : existingInteraction.isRead
+        });
+      } else {
+        // Create new interaction
+        interaction = await storage.createUserArticleInteraction({
+          userId,
+          articleId,
+          isSaved: isSaved || false,
+          isRead: isRead || false
+        });
+      }
+      
+      res.status(200).json(interaction);
+    } catch (error) {
+      console.error("Update article interaction error:", error);
+      res.status(500).json({ message: "Failed to update article interaction" });
+    }
+  });
+  
+  // Stats route
+  app.get("/api/stats", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const stats = await storage.getUserStats(userId);
+      res.status(200).json(stats);
+    } catch (error) {
+      console.error("Get stats error:", error);
+      res.status(500).json({ message: "Failed to get stats" });
+    }
+  });
+  
+  return httpServer;
+}
