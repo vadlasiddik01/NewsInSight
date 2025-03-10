@@ -30,6 +30,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch current user data
   const { data: user, isLoading, isError, refetch } = useQuery<User>({
     queryKey: ['/api/me'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('/api/me', {
+          credentials: 'include'
+        });
+        
+        if (response.status === 401) {
+          return null;
+        }
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch user data');
+        }
+        
+        return response.json();
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        throw error;
+      }
+    },
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });

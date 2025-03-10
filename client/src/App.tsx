@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,19 +11,23 @@ import SavedArticles from "@/pages/SavedArticles";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./lib/auth";
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   
   if (isLoading) {
-    return <div>Loading...</div>;
+    return <div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin h-8 w-8 border-4 border-primary rounded-full border-t-transparent"></div>
+    </div>;
   }
   
   if (!isAuthenticated) {
-    window.location.href = "/login";
+    // Use the wouter hook for navigation instead of direct window.location
+    setLocation("/login");
     return null;
   }
   
-  return <Component />;
+  return <>{children}</>;
 }
 
 function Router() {
@@ -33,12 +37,22 @@ function Router() {
       <Route path="/login" component={Login}/>
       <Route path="/register" component={Register}/>
       <Route path="/preferences">
-        {() => <ProtectedRoute component={Preferences} />}
+        {() => (
+          <ProtectedRoute>
+            <Preferences />
+          </ProtectedRoute>
+        )}
       </Route>
       <Route path="/saved">
-        {() => <ProtectedRoute component={SavedArticles} />}
+        {() => (
+          <ProtectedRoute>
+            <SavedArticles />
+          </ProtectedRoute>
+        )}
       </Route>
-      <Route component={NotFound} />
+      <Route>
+        {() => <NotFound />}
+      </Route>
     </Switch>
   );
 }
