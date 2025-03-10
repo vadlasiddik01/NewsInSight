@@ -14,6 +14,17 @@ const SavedArticles = () => {
   // Fetch saved articles
   const { data: savedArticles, isLoading } = useQuery<ArticleWithSentiment[]>({
     queryKey: ['/api/articles/saved'],
+    queryFn: async () => {
+      const response = await fetch('/api/articles/saved', {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch saved articles');
+      }
+      
+      return response.json();
+    },
     enabled: isAuthenticated
   });
   

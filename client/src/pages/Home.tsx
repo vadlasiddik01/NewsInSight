@@ -21,13 +21,24 @@ const Home = () => {
 
   // Fetch articles with filters
   const { data: articles, isLoading: articlesLoading } = useQuery<ArticleWithSentiment[]>({
-    queryKey: [
-      `/api/articles`,
-      selectedTopic && `topic=${selectedTopic}`,
-      selectedSentiment && `sentiment=${selectedSentiment}`,
-      `limit=${articlesPerPage}`,
-      `offset=${(currentPage - 1) * articlesPerPage}`
-    ].filter(Boolean).join('&'),
+    queryKey: ['/api/articles', selectedTopic, selectedSentiment, currentPage],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedTopic) params.append('topic', selectedTopic);
+      if (selectedSentiment) params.append('sentiment', selectedSentiment);
+      params.append('limit', articlesPerPage.toString());
+      params.append('offset', ((currentPage - 1) * articlesPerPage).toString());
+      
+      const response = await fetch(`/api/articles?${params.toString()}`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch articles');
+      }
+      
+      return response.json();
+    },
     enabled: true
   });
 

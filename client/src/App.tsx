@@ -11,7 +11,7 @@ import SavedArticles from "@/pages/SavedArticles";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./lib/auth";
 
-function ProtectedRoute({ component: Component, ...rest }: { component: React.ComponentType, path: string }) {
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, isLoading } = useAuth();
   
   if (isLoading) {
@@ -23,7 +23,7 @@ function ProtectedRoute({ component: Component, ...rest }: { component: React.Co
     return null;
   }
   
-  return <Component {...rest} />;
+  return <Component />;
 }
 
 function Router() {
@@ -33,10 +33,10 @@ function Router() {
       <Route path="/login" component={Login}/>
       <Route path="/register" component={Register}/>
       <Route path="/preferences">
-        {(params) => <ProtectedRoute component={Preferences} path="/preferences" />}
+        {() => <ProtectedRoute component={Preferences} />}
       </Route>
       <Route path="/saved">
-        {(params) => <ProtectedRoute component={SavedArticles} path="/saved" />}
+        {() => <ProtectedRoute component={SavedArticles} />}
       </Route>
       <Route component={NotFound} />
     </Switch>
